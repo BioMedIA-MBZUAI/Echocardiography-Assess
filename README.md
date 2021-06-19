@@ -48,9 +48,6 @@ To predict and evaluate the model performance on the test images:
 
 `python predict_and_eval.py`
 
-### SimCLR Pretrained model
-A pretrained SimCLR model `./simclrunet.pth` is already uploaded in the repository.
-
 ## Tensorboard
 You can visualize in real time the train and test losses, the weights and gradients, along with the model predictions with tensorboard:
 
