@@ -1,5 +1,4 @@
-# UNet: semantic segmentation with PyTorch
-
+# Echocardiography-Assess: Semantic Segmentation with UNet
 
 
 Customized implementation of the [Pytorch-UNet](https://github.com/milesial/Pytorch-UNet) by milesial with a self supervised learning task (SimCLR) added before the downstream task.
