@@ -39,8 +39,48 @@ By default, the `scale` is 0.5, so if you wish to obtain better results (but use
 
 The input images and target masks should be in the `data/imgs` and `data/masks` folders respectively.
 
+### Prediction
 
-### Prediction and Evaluation
+To extract all the frames in a video (will be saved in a directory called `video/`):
+
+`python3 extractvid.py videoname(without extension)`
+
+To predict the output of images extracted from a video and create a video with the segmentation overlay:
+
+`python3 predict.py --model model_file.pth -i video -f 58`
+
+```shell script
+> python predict.py -h
+usage: predict.py [-h] [--model FILE] --input INPUT [INPUT ...]
+                  [--output INPUT [INPUT ...]] [--viz] [--no-save]
+                  [--mask-threshold MASK_THRESHOLD] [--scale SCALE]
+                  [--fps FPS]
+
+Predict masks from input images
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --model FILE, -m FILE
+                        Specify the file in which the model is stored
+                        (default: MODEL.pth)
+  --input INPUT [INPUT ...], -i INPUT [INPUT ...]
+                        filenames of input images (default: None)
+  --output INPUT [INPUT ...], -o INPUT [INPUT ...]
+                        Filenames of ouput images (default: None)
+  --viz, -v             Visualize the images as they are processed (default:
+                        False)
+  --no-save, -n         Do not save the output masks (default: False)
+  --mask-threshold MASK_THRESHOLD, -t MASK_THRESHOLD
+                        Minimum probability value to consider a mask pixel
+                        white (default: 0.5)
+  --scale SCALE, -s SCALE
+                        Scale factor for the input images (default: 1)
+  --fps FPS, -f FPS
+                        Number of frames per second in the video to be generated (default: 50)
+```
+You can specify which model file to use with `--model MODEL.pth`.
+
+### Evaluation
 
 After training your UNet model and saving it to MODEL.pth, you can easily test the output masks on your images and view the dice coefficient via the CLI.
 
