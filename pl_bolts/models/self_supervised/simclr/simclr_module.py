@@ -15,8 +15,9 @@ from pl_bolts.transforms.dataset_normalizations import (
     imagenet_normalization,
     stl10_normalization,
 )
-from unet import UNet
 
+from unet import UNet
+import torchvision
 
 class SyncFunction(torch.autograd.Function):
 
@@ -69,7 +70,7 @@ class SimCLR(pl.LightningModule):
         dataset: str,
         num_nodes: int = 1,
         arch: str = 'resnet50',
-        hidden_mlp: int = 12544,
+        hidden_mlp: int = 2048,
         feat_dim: int = 128,
         warmup_epochs: int = 10,
         max_epochs: int = 100,
@@ -134,11 +135,11 @@ class SimCLR(pl.LightningModule):
             backbone = resnet50
 
         #return backbone(first_conv=self.first_conv, maxpool1=self.maxpool1, return_all_feature_maps=False)
-        return UNet(3,1)
+        return torchvision.models._utils.IntermediateLayerGetter(UNet(3,1), {"down4":"down4"})
 
     def forward(self, x):
         # bolts resnet returns a list
-        return self.encoder(x)[-1].view(-1, 12544)
+        return self.encoder(x)['down4'].view(x.shape[0], self.hidden_mlp)
 
     def shared_step(self, batch):
         if self.dataset == 'stl10':

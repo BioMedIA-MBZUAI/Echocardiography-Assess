@@ -6,6 +6,7 @@ import sys
 import numpy as np
 import torch
 import torch.nn as nn
+import torchvision
 from torch import optim
 from tqdm import tqdm
 
@@ -17,6 +18,8 @@ from utils.dataset import BasicDataset
 from torch.utils.data import DataLoader, random_split
 
 from pl_bolts.models.self_supervised.simclr.simclr_module import SimCLR
+
+import madgrad
 
 train_img = 'data/imgs/train/'
 train_mask = 'data/masks/train/'
@@ -32,12 +35,17 @@ def train_net(net,
               lr=0.001,
               val_percent=0.1,
               save_cp=True,
+              optimname='mad',
               img_scale=0.5):
 
     train = BasicDataset(train_img, train_mask, img_scale)
+    #indices = np.random.choice(len(train), 4972, replace=False)
+    #train = torch.utils.data.Subset(train, indices)
+    n_train = len(train)
+    
     val = BasicDataset(val_img, val_mask, img_scale)
     n_val = len(val)
-    n_train = len(train)
+
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
 
@@ -53,9 +61,20 @@ def train_net(net,
         Checkpoints:     {save_cp}
         Device:          {device.type}
         Images scaling:  {img_scale}
+        Optimizer:       {optimname}
     ''')
 
-    optimizer = optim.RMSprop(net.parameters(), lr=lr, weight_decay=1e-8, momentum=0.9)
+    if optimname == 'rms':
+       optimizer = optim.RMSprop(net.parameters(), lr=lr, weight_decay=1e-8, momentum=0.9)
+    elif optimname == 'adam':
+       optimizer = optim.Adam(net.parameters(), lr=lr, weight_decay=1e-8)
+    elif optimname == 'mad':
+       optimizer = madgrad.MADGRAD(net.parameters(), lr=lr, weight_decay=1e-8, momentum=0.9)
+    else:
+       optimizer = optim.SGD(net.parameters(), lr=lr, weight_decay=1e-8, momentum=0.9)
+
+    print("Optimizer: ", optimizer)
+
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min' if net.n_classes > 1 else 'max', patience=2)
     
     if net.n_classes > 1:
@@ -131,13 +150,15 @@ def train_net(net,
 def get_args():
     parser = argparse.ArgumentParser(description='Train the UNet on images and target masks',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-e', '--epochs', metavar='E', type=int, default=5,
+    parser.add_argument('-e', '--epochs', metavar='E', type=int, default=50,
                         help='Number of epochs', dest='epochs')
-    parser.add_argument('-b', '--batch-size', metavar='B', type=int, nargs='?', default=1,
+    parser.add_argument('-b', '--batch-size', metavar='B', type=int, nargs='?', default=20,
                         help='Batch size', dest='batchsize')
     parser.add_argument('-l', '--learning-rate', metavar='LR', type=float, nargs='?', default=0.0001,
                         help='Learning rate', dest='lr')
     parser.add_argument('-f', '--load', dest='load', type=str, default=False,
+                        help='Load model from a .pth file')
+    parser.add_argument('-o', '--optimname', dest='optimname', type=str, default='mad',
                         help='Load model from a .pth file')
     parser.add_argument('-s', '--scale', dest='scale', type=float, default=0.5,
                         help='Downscaling factor of the images')
@@ -161,18 +182,38 @@ if __name__ == '__main__':
     #   - For N > 2 classes, use n_classes=N
     net = UNet(n_channels=3, n_classes=1, bilinear=True)
     
-    simclr = SimCLR(1, num_samples = 7460, batch_size = 32, dataset = 'cifar10', temperature=0.05)
-    encoder = list(net.children())[:-5]
-    encoder = nn.Sequential(*encoder)
-    simclr.encoder = encoder
+    simclr = SimCLR(1, num_samples = 7460, batch_size = 32, dataset = 'cifar10', temperature=0.05, hidden_mlp=25088)
 
-    simclr.load_state_dict(torch.load('simclrunet.pth'))
+    for param in simclr.encoder.down1.parameters():
+       print('------------Before-----------')
+       print(param[0][0])
+       break
 
-    net.inc = simclr.encoder[0]
-    net.down1 = simclr.encoder[1]
-    net.down2 = simclr.encoder[2]
-    net.down3 = simclr.encoder[3]
-    net.down4 = simclr.encoder[4]
+    simclr.load_state_dict(torch.load('newsimclrunet_batch64_ep50_allframes.pth'))
+
+    for param in simclr.encoder.down1.parameters():
+       print('------------After-----------')
+       print(param[0][0])
+       break
+
+    for param in net.down1.parameters():
+       print('------------Before-----------')
+       print(param[0][0])
+       break
+
+    net_dict = net.state_dict()
+    simclr_dict = simclr.state_dict()
+
+    for key in simclr_dict.keys():
+       if "encoder" in key:
+          net_dict[key.replace('encoder.','')] = simclr_dict[key]
+  
+    net.load_state_dict(net_dict)
+
+    for param in net.down1.parameters():
+       print('------------After-----------')
+       print(param[0][0])
+       break
 
     logging.info(f'Network:\n'
                  f'\t{net.n_channels} input channels\n'
@@ -180,7 +221,7 @@ if __name__ == '__main__':
                  f'\t{"Bilinear" if net.bilinear else "Transposed conv"} upscaling')
 
     if args.load:
-        net.load_state_dict(
+        net2.load_state_dict(
             torch.load(args.load, map_location=device)
         )
         logging.info(f'Model loaded from {args.load}')
@@ -196,6 +237,7 @@ if __name__ == '__main__':
                   lr=args.lr,
                   device=device,
                   img_scale=args.scale,
+                  optimname=args.optimname,
                   val_percent=args.val / 100)
     except KeyboardInterrupt:
         torch.save(net.state_dict(), 'INTERRUPTED.pth')
